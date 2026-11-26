@@ -82,8 +82,28 @@ jobs:
           sed -i "s/versionName '[^']*'/versionName '${NEW_NAME}'/" app/build.gradle
           grep -nE "versionCode|versionName" app/build.gradle
 
+      - name: 检查默认 WebDAV 配置是否已注入
+        working-directory: ${{ steps.proj.outputs.dir }}
+        env:
+          DAV_URL: ${{ secrets.DAV_URL }}
+          DAV_USER: ${{ secrets.DAV_USER }}
+          DAV_PASSWORD: ${{ secrets.DAV_PASSWORD }}
+          DAV_ROOT: ${{ secrets.DAV_ROOT }}
+        run: |
+          echo "DAV_URL 已配置：$([ -n "$DAV_URL" ] && echo 是 || echo 否)"
+          echo "DAV_USER 已配置：$([ -n "$DAV_USER" ] && echo 是 || echo 否)"
+          echo "DAV_PASSWORD 已配置：$([ -n "$DAV_PASSWORD" ] && echo 是 || echo 否)"
+          echo "DAV_ROOT 已配置：$([ -n "$DAV_ROOT" ] && echo 是 || echo 否)"
+          echo "（只打印有没有，不打印具体值；否 = 回退到 gradle.properties）"
+
       - name: 编译 Release APK
         working-directory: ${{ steps.proj.outputs.dir }}
+        env:
+          # 没配这些 Secrets 时为空串，build.gradle 会回退到 gradle.properties 里的值
+          DAV_URL: ${{ secrets.DAV_URL }}
+          DAV_USER: ${{ secrets.DAV_USER }}
+          DAV_PASSWORD: ${{ secrets.DAV_PASSWORD }}
+          DAV_ROOT: ${{ secrets.DAV_ROOT }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: 上传 APK
