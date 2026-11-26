@@ -46,7 +46,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            outputFileName = "TVWebDavBox_v${variant.versionName}_${variant.buildType.name}.apk"
+            outputFileName = "TVStore_v${variant.versionName}_${variant.buildType.name}.apk"
         }
     }
 }
