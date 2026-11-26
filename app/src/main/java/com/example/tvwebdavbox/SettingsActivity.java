@@ -11,7 +11,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
 
 /** WebDAV 服务器配置页：地址、账号、密码、远端根目录、证书策略。 */
@@ -24,7 +23,6 @@ public class SettingsActivity extends Activity {
     private CheckBox insecureCheck;
     private Button testButton;
     private Button saveButton;
-    private TextView statusText;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
 
@@ -40,7 +38,6 @@ public class SettingsActivity extends Activity {
         insecureCheck = findViewById(R.id.check_insecure);
         testButton = findViewById(R.id.btn_test);
         saveButton = findViewById(R.id.btn_save);
-        statusText = findViewById(R.id.settings_status);
 
         passwordInput.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -51,29 +48,8 @@ public class SettingsActivity extends Activity {
         rootInput.setText(PreferenceStore.getRemoteRoot(this));
         insecureCheck.setChecked(PreferenceStore.isInsecureTls(this));
 
-        updateStatusLine();
-
         testButton.setOnClickListener(v -> testConnection());
         saveButton.setOnClickListener(v -> save());
-    }
-
-    /**
-     * 顶部状态行：明确区分"已载入内置默认配置"和"空白待填"，
-     * 避免输入框里的真值被误看成灰色占位提示。
-     */
-    private void updateStatusLine() {
-        if (statusText == null) {
-            return;
-        }
-        String url = serverInput.getText().toString().trim();
-        String builtIn = BuildConfig.DAV_URL == null ? "" : BuildConfig.DAV_URL.trim();
-        if (TextUtils.isEmpty(url)) {
-            statusText.setText(R.string.settings_status_empty);
-        } else if (!builtIn.isEmpty() && url.equalsIgnoreCase(builtIn)) {
-            statusText.setText(getString(R.string.settings_status_default, url));
-        } else {
-            statusText.setText("");
-        }
     }
 
     private WebDavConfig readConfig() {
