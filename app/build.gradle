@@ -2,19 +2,69 @@ plugins {
     id 'com.android.application'
 }
 
+// ---------------------------------------------------------------------------
+// 默认 WebDAV 配置：优先取环境变量（CI 可用 GitHub Secrets 注入），
+// 其次取 gradle.properties 里的同名项，最后为空。
+// 这样装完 APK 打开就已经是填好的服务器，不用在电视遥控器上一个字一个字敲。
+// ---------------------------------------------------------------------------
+def davValue = { String propKey, String envKey, String fallback ->
+    String v = System.getenv(envKey)
+    if (v == null || v.isEmpty()) {
+        Object p = project.findProperty(propKey)
+        v = p == null ? null : p.toString()
+    }
+    return (v == null || v.isEmpty()) ? fallback : v
+}
+def davUrl = davValue('defaultDavUrl', 'DAV_URL', '')
+def davUser = davValue('defaultDavUser', 'DAV_USER', '')
+def davPassword = davValue('defaultDavPassword', 'DAV_PASSWORD', '')
+def davRoot = davValue('defaultDavRoot', 'DAV_ROOT', '/TVBox/')
+def davInsecure = davValue('defaultDavInsecure', 'DAV_INSECURE', 'false')
+def javaEscape = { String s -> s.replace('\\', '\\\\').replace('"', '\\"') }
+
 android {
     namespace 'com.example.tvwebdavbox'
     // compileSdk 35 + targetSdk 28 是留给 Android 6(API 23) 老盒子的稳妥组合
     compileSdk 35
     buildToolsVersion '34.0.0'
 
+    // -----------------------------------------------------------------------
+    // 固定签名：仓库内 keystore/tvwebdavbox.jks。
+    // 以前用 debug 签名，而 debug keystore 在每台机器/每次 CI 运行都会重新生成，
+    // 导致每个版本签名都不同、每次都提示"签名不一致"无法覆盖安装。
+    // 改成固定 keystore 后，本地与 Actions 出的包签名完全一致，可以直接覆盖升级。
+    // -----------------------------------------------------------------------
+    def releaseKeystore = rootProject.file('keystore/tvwebdavbox.jks')
+
+    signingConfigs {
+        release {
+            if (releaseKeystore.exists()) {
+                storeFile releaseKeystore
+                storePassword project.findProperty('releaseStorePassword') ?: 'tvbox2026'
+                keyAlias project.findProperty('releaseKeyAlias') ?: 'tvwebdavbox'
+                keyPassword project.findProperty('releaseKeyPassword') ?: 'tvbox2026'
+            }
+        }
+    }
+
     defaultConfig {
         applicationId 'com.example.tvwebdavbox'
         // Android 6.0 (API 23) 是最低版本；不设 ABI 过滤，本工程无原生库
         minSdk 23
         targetSdk 28
-        versionCode 3
-        versionName '1.1.1'
+        versionCode 4
+        versionName '1.2.0'
+
+        // 把默认 WebDAV 配置编译进 APK
+        buildConfigField "String", "DAV_URL", "\"${javaEscape(davUrl)}\""
+        buildConfigField "String", "DAV_USER", "\"${javaEscape(davUser)}\""
+        buildConfigField "String", "DAV_PASSWORD", "\"${javaEscape(davPassword)}\""
+        buildConfigField "String", "DAV_ROOT", "\"${javaEscape(davRoot)}\""
+        buildConfigField "boolean", "DAV_INSECURE", "${davInsecure == 'true'}"
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -26,8 +76,8 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // 直接使用 debug 签名，方便侧载安装（正式发布请自行配置 keystore）
-            signingConfig signingConfigs.debug
+            // 有固定 keystore 就用它；万一没上传，退回 debug 签名保证仍能出包
+            signingConfig releaseKeystore.exists() ? signingConfigs.release : signingConfigs.debug
         }
     }
 
