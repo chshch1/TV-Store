@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# 固定签名密钥库需随仓库提交（仅供自用侧载；公开仓库意味着别人也能用同一证书签名）
+!keystore/tvwebdavbox.jks
