@@ -117,15 +117,20 @@ jobs:
       - name: 创建 Release 或补传 APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # release 作业没有检出源码、没有 .git 目录，必须显式告诉 gh 目标仓库
+          GH_REPO: ${{ github.repository }}
         run: |
+          gh --version
+          TAG="$GITHUB_REF_NAME"
           # 幂等：网页上先手动建了 Release，这里只补附件；没建过就新建一个
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME 已存在，补传 APK"
-            gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG 已存在，补传 APK"
+            gh release upload "$TAG" dist/*.apk --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.apk \
-              --title "TVWebDavBox $GITHUB_REF_NAME" \
+            echo "Release $TAG 不存在，创建并上传 APK"
+            gh release create "$TAG" dist/*.apk \
+              --title "TVWebDavBox $TAG" \
               --generate-notes
           fi
-          echo "完成：${{ github.server_url }}/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME"
+          echo "完成：https://github.com/$GH_REPO/releases/tag/$TAG"
 
