@@ -7,6 +7,8 @@
     <color name="accent">#FF4FC3F7</color>
     <color name="text_primary">#FFECEFF4</color>
     <color name="text_secondary">#FF9AA5B1</color>
+    <!-- 输入框文字用纯白，和灰色提示文字形成明显对比，避免"已填好"被误看成"空" -->
+    <color name="text_input">#FFFFFFFF</color>
     <color name="divider">#FF242C37</color>
     <color name="folder">#FFFFCA28</color>
     <color name="file">#FF9AA5B1</color>

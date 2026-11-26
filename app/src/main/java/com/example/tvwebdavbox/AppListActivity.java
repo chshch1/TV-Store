@@ -9,12 +9,16 @@ import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ListView;
+import android.widget.CheckBox;
+import android.widget.GridView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 已安装应用多选页：勾选若干应用后批量备份（上传）到当前 WebDAV 目录。
@@ -26,20 +30,27 @@ public class AppListActivity extends Activity {
     public static final String EXTRA_PATHS = "apk_paths";
     public static final String EXTRA_NAMES = "apk_names";
 
-    private ListView listView;
+    private GridView listView;
     private TextView title;
     private TextView subtitle;
     private TextView emptyText;
     private TextView selectionText;
     private Button selectAllButton;
     private Button uploadButton;
+    private CheckBox showSystemBox;
 
     private AppAdapter adapter;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     private List<InstalledApp> allApps = new ArrayList<>();
-    /** 电视上大量应用是预装的系统应用，默认全部显示，否则很容易看到空列表。 */
-    private boolean showSystemApps = true;
+    private final Map<String, String> cloudTexts = new HashMap<>();
+    private final Map<String, Integer> cloudColors = new HashMap<>();
+    private static final int CLOUD_OK = 0xFF7BD88F;
+    private static final int CLOUD_PENDING = 0xFFFFC857;
+    private static final int CLOUD_NEWER = 0xFF4FC3F7;
+    private static final int CLOUD_MUTED = 0xFF9AA5B1;
+    /** 默认只显示用户应用，系统应用需要手动勾选后才显示（避免一次列出几十项预装应用）。 */
+    private boolean showSystemApps = false;
     private String remoteDir;
 
     @Override
@@ -56,6 +67,12 @@ public class AppListActivity extends Activity {
         selectionText = findViewById(R.id.app_selection);
         selectAllButton = findViewById(R.id.btn_select_all);
         uploadButton = findViewById(R.id.btn_upload_selected);
+        showSystemBox = findViewById(R.id.app_show_system);
+        showSystemBox.setChecked(showSystemApps);
+        showSystemBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            showSystemApps = isChecked;
+            applyFilter();
+        });
 
         title.setText(R.string.app_list_title);
         subtitle.setText(remoteDir == null ? "" : remoteDir);
@@ -94,11 +111,96 @@ public class AppListActivity extends Activity {
             } catch (Throwable t) {
                 apps = new ArrayList<>();
             }
+
+            // 同时拉取云端目录，做「本机 vs 云端」版本对比
+            final Map<String, String> texts = new HashMap<>();
+            final Map<String, Integer> colors = new HashMap<>();
+            final List<InstalledApp> outdated = new ArrayList<>();
+            Map<String, String> cloudVersions = new HashMap<>();
+            String cloudError = null;
+            try {
+                WebDavConfig config = PreferenceStore.loadConfig(this);
+                if (!config.isConfigured()) {
+                    throw new IOException("未配置服务器");
+                }
+                if (remoteDir == null || remoteDir.isEmpty()) {
+                    throw new IOException("没有远端目录");
+                }
+                List<RemoteEntry> entries = new WebDavClient(config).list(remoteDir);
+                for (RemoteEntry entry : entries) {
+                    if (entry == null || entry.directory) {
+                        continue;
+                    }
+                    String[] parsed = ApkFileNames.parse(entry.name);
+                    if (parsed == null) {
+                        continue;
+                    }
+                    String key = ApkFileNames.normalize(parsed[0]);
+                    String existing = cloudVersions.get(key);
+                    // 同一应用有多个备份版本时保留最高的那个
+                    if (existing == null || VersionComparator.compare(existing, parsed[1])
+                            == VersionComparator.Result.LOCAL_NEWER) {
+                        cloudVersions.put(key, parsed[1]);
+                    }
+                }
+            } catch (Throwable t) {
+                cloudError = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+            }
+
+            for (InstalledApp app : apps) {
+                String cloudVersion = cloudVersions.get(ApkFileNames.normalize(app.label));
+                if (cloudError != null) {
+                    texts.put(app.packageName, getString(R.string.cloud_error));
+                    colors.put(app.packageName, CLOUD_MUTED);
+                    continue;
+                }
+                if (cloudVersion == null) {
+                    texts.put(app.packageName, getString(R.string.cloud_missing));
+                    colors.put(app.packageName, CLOUD_MUTED);
+                    continue;
+                }
+                VersionComparator.Result result = VersionComparator.compare(app.versionName, cloudVersion);
+                switch (result) {
+                    case LOCAL_NEWER:
+                        texts.put(app.packageName, getString(R.string.cloud_outdated, cloudVersion));
+                        colors.put(app.packageName, CLOUD_PENDING);
+                        outdated.add(app);
+                        break;
+                    case REMOTE_NEWER:
+                        texts.put(app.packageName, getString(R.string.cloud_newer, cloudVersion));
+                        colors.put(app.packageName, CLOUD_NEWER);
+                        break;
+                    case EQUAL:
+                        texts.put(app.packageName, getString(R.string.cloud_synced, cloudVersion));
+                        colors.put(app.packageName, CLOUD_OK);
+                        break;
+                    default:
+                        texts.put(app.packageName, getString(R.string.cloud_incomparable, cloudVersion));
+                        colors.put(app.packageName, CLOUD_MUTED);
+                        break;
+                }
+            }
+
             final List<InstalledApp> loaded = apps;
+            final String finalError = cloudError;
+            final int autoCount = outdated.size();
             ui.post(() -> {
                 allApps = loaded;
+                cloudTexts.clear();
+                cloudTexts.putAll(texts);
+                cloudColors.clear();
+                cloudColors.putAll(colors);
+                adapter.setCloudInfo(cloudTexts, cloudColors);
                 adapter.clearSelection();
                 applyFilter();
+                if (autoCount > 0) {
+                    adapter.selectPackages(outdated);
+                    updateSelection();
+                    toast(getString(R.string.cloud_auto_selected, autoCount));
+                }
+                if (finalError != null) {
+                    toast(getString(R.string.cloud_read_failed, finalError));
+                }
             });
         }, "app-list").start();
     }
@@ -143,7 +245,7 @@ public class AppListActivity extends Activity {
     private void updateSelection() {
         int count = adapter.selectedCount();
         selectionText.setText(getString(R.string.app_selection, count, adapter.getCount()));
-        uploadButton.setText(getString(R.string.upload_selected, count));
+        uploadButton.setText(R.string.app_upload_action);
         uploadButton.setEnabled(count > 0);
         selectAllButton.setText(count > 0 && count == adapter.getCount()
                 ? R.string.app_select_none : R.string.app_select_all);
@@ -201,6 +303,7 @@ public class AppListActivity extends Activity {
                         updateSelection();
                     } else if (which == 2) {
                         showSystemApps = !showSystemApps;
+                        showSystemBox.setChecked(showSystemApps);
                         applyFilter();
                     } else {
                         loadApps();

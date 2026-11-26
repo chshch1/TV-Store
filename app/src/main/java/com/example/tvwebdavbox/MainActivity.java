@@ -2,7 +2,16 @@ package com.example.tvwebdavbox;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.Manifest;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.pm.PackageInstaller;
+import android.os.Environment;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,14 +23,22 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ListView;
+import android.widget.GridView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.List;
 
 /**
@@ -33,13 +50,14 @@ public class MainActivity extends Activity {
     private static final int REQUEST_SETTINGS = 2001;
     private static final int REQUEST_PICK_FILE = 2002;
     private static final int REQUEST_PICK_APPS = 2003;
+    private static final int REQUEST_STORAGE_PERMISSION = 2004;
 
     private static final int COLOR_BADGE_INFO = 0xFF4FC3F7;
     private static final int COLOR_BADGE_UPGRADE = 0xFFFFC857;
     private static final int COLOR_BADGE_OK = 0xFF7BD88F;
     private static final int COLOR_BADGE_MUTED = 0xFF9AA5B1;
 
-    private ListView listView;
+    private GridView listView;
     private TextView pathText;
     private TextView statusText;
     private TextView emptyText;
@@ -51,7 +69,6 @@ public class MainActivity extends Activity {
     private Button buttonRefresh;
     private Button buttonApps;
     private Button buttonUpload;
-    private Button buttonMkcol;
 
     private EntryAdapter adapter;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -70,6 +87,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        requestStoragePermissionIfNeeded();
 
         listView = findViewById(R.id.list_files);
         pathText = findViewById(R.id.path_text);
@@ -83,7 +101,6 @@ public class MainActivity extends Activity {
         buttonRefresh = findViewById(R.id.btn_refresh);
         buttonApps = findViewById(R.id.btn_apps);
         buttonUpload = findViewById(R.id.btn_upload);
-        buttonMkcol = findViewById(R.id.btn_mkcol);
 
         adapter = new EntryAdapter(this);
         listView.setAdapter(adapter);
@@ -100,9 +117,11 @@ public class MainActivity extends Activity {
         buttonRefresh.setOnClickListener(v -> refresh(true));
         buttonApps.setOnClickListener(v -> openAppPicker());
         buttonUpload.setOnClickListener(v -> pickLocalFile());
-        buttonMkcol.setOnClickListener(v -> promptNewFolder());
 
         hintText.setText(R.string.key_hint);
+        if (!packageReceiverRegistered) {
+            registerPackageReceiver();
+        }
         warmUpAppIndex();
     }
 
@@ -120,13 +139,67 @@ public class MainActivity extends Activity {
             }
             appIndexReady = true;
             warmingUp = false;
+            final Map<String, Drawable> icons = new HashMap<>();
+            try {
+                for (InstalledApp app : InstalledAppRepository.cached(this)) {
+                    String key = ApkFileNames.normalize(app.label);
+                    if (app.icon != null && !icons.containsKey(key)) {
+                        icons.put(key, app.icon);
+                    }
+                }
+            } catch (Exception ignored) {
+                // 取不到图标就退回通用图标
+            }
             ui.post(() -> {
+                appIcons.clear();
+                appIcons.putAll(icons);
                 if (!isFinishing() && !currentEntries.isEmpty()) {
                     renderRows();
                 }
             });
         }, "app-index").start();
     }
+
+    /** 安装/卸载完成后系统广播：让应用索引失效并重绘角标，不然列表还显示"未安装" */
+    private final BroadcastReceiver packageChangeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (intent.getData() == null) {
+                return;
+            }
+            String pkg = intent.getData().getSchemeSpecificPart();
+            // 自己这个包被替换时也要重算
+            InstalledAppRepository.invalidate();
+            appIndexReady = false;
+            warmUpAppIndex();
+            if (Intent.ACTION_PACKAGE_ADDED.equals(action) && awaitingInstallResult) {
+                awaitingInstallResult = false;
+                ui.post(MainActivity.this::finishInstallAndMaybeCleanup);
+            }
+            if (Intent.ACTION_PACKAGE_ADDED.equals(action)
+                    || Intent.ACTION_PACKAGE_REMOVED.equals(action)
+                    || Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+                ui.post(() -> {
+                    if (!isFinishing() && !currentEntries.isEmpty()) {
+                        renderRows();
+                    }
+                });
+            }
+        }
+    };
+
+    private void registerPackageReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addDataScheme("package");
+        registerReceiver(packageChangeReceiver, filter);
+        packageReceiverRegistered = true;
+    }
+
+    private boolean packageReceiverRegistered;
 
     @Override
     protected void onResume() {
@@ -156,6 +229,19 @@ public class MainActivity extends Activity {
         refresh(false);
         if (!buttonRefresh.hasFocus() && !listView.hasFocus()) {
             listView.requestFocus();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (packageReceiverRegistered) {
+            try {
+                unregisterReceiver(packageChangeReceiver);
+            } catch (Exception ignored) {
+                // 忽略
+            }
+            packageReceiverRegistered = false;
         }
     }
 
@@ -200,7 +286,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** 应用名（归一化）→ 图标，来自已安装应用索引 */
+    private final Map<String, Drawable> appIcons = new HashMap<>();
+    /** 本地已下载过的包名（归一化）集合 */
+    private final Set<String> downloadedKeys = new HashSet<>();
+    private long downloadedScanAt;
+
     private void renderRows() {
+        refreshDownloadedKeys();
         List<RowItem> rows = new ArrayList<>(currentEntries.size());
         for (RemoteEntry entry : currentEntries) {
             rows.add(toRow(entry));
@@ -211,19 +304,99 @@ public class MainActivity extends Activity {
     }
 
     private RowItem toRow(RemoteEntry entry) {
-        String meta = entry.directory ? getString(R.string.type_folder)
-                : joinMeta(FileUtils.humanSize(entry.size), FileUtils.formatTime(entry.lastModified));
         if (entry.directory || !ApkFileNames.isApk(entry.name)) {
-            return new RowItem(entry.name, meta, entry.directory, entry);
+            String meta = entry.directory ? getString(R.string.type_folder)
+                    : joinMeta(FileUtils.humanSize(entry.size), FileUtils.formatTime(entry.lastModified));
+            RowItem row = new RowItem(entry.name, meta, entry.directory, entry);
+            return row;
         }
+
+        // APK 行：文件名去掉版本号和 .apk，只显示应用名；副标题显示版本与大小
+        String displayName = displayNameOf(entry.name);
+        String version = versionOf(entry.name);
+        String meta = version.isEmpty()
+                ? FileUtils.humanSize(entry.size)
+                : getString(R.string.row_version_size, version, FileUtils.humanSize(entry.size));
+
         ApkBadge badge = evaluateApk(entry.name);
-        if (badge == null) {
-            return new RowItem(entry.name, meta, false, entry);
+        String badgeText = null;
+        int badgeColor = 0;
+        if (badge != null) {
+            if (badge.app == null) {
+                badgeText = getString(R.string.badge_not_installed);
+                badgeColor = COLOR_BADGE_INFO;
+            } else if (badge.color == COLOR_BADGE_UPGRADE) {
+                badgeText = getString(R.string.badge_short_upgrade);
+                badgeColor = COLOR_BADGE_UPGRADE;
+            } else {
+                badgeText = getString(R.string.badge_short_installed);
+                badgeColor = COLOR_BADGE_OK;
+            }
         }
-        if (badge.app != null) {
-            meta = joinMeta(meta, getString(R.string.local_version, badge.app.versionName));
+        boolean downloaded = downloadedKeys.contains(ApkFileNames.normalize(displayName));
+        RowItem row = new RowItem(displayName, meta, false, entry,
+                badgeText, badgeColor, downloaded);
+        row.icon = appIcons.get(ApkFileNames.normalize(displayName));
+        return row;
+    }
+
+    /** 去掉 _v<版本> 与 .apk，只留应用名 */
+    private static String displayNameOf(String fileName) {
+        if (fileName == null) {
+            return "";
         }
-        return new RowItem(entry.name, meta, false, entry, badge.text, badge.color);
+        String stem = ApkFileNames.isApk(fileName)
+                ? fileName.substring(0, fileName.length() - 4) : fileName;
+        int index = stem.toLowerCase(java.util.Locale.US).lastIndexOf("_v");
+        if (index > 0) {
+            String tail = stem.substring(index + 2);
+            // 只有后面确实是版本号（以数字开头）才认为这是版本段
+            if (!tail.isEmpty() && Character.isDigit(tail.charAt(0))) {
+                stem = stem.substring(0, index);
+            }
+        }
+        return stem;
+    }
+
+    private static String versionOf(String fileName) {
+        String[] parsed = ApkFileNames.parse(fileName);
+        return parsed == null ? "" : parsed[1];
+    }
+
+    /** 扫描本地已下载过的包：内部下载目录 + 公共 Download 目录 */
+    private void refreshDownloadedKeys() {
+        long now = System.currentTimeMillis();
+        if (now - downloadedScanAt < 3000) {
+            return;
+        }
+        downloadedScanAt = now;
+        downloadedKeys.clear();
+        collectDownloadedKeys(downloadDir());
+        try {
+            collectDownloadedKeys(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS));
+        } catch (Throwable ignored) {
+            // 外部存储不可用就算了
+        }
+    }
+
+    private void collectDownloadedKeys(File dir) {
+        if (dir == null) {
+            return;
+        }
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
+            if (file == null || !file.isFile() || !ApkFileNames.isApk(file.getName())) {
+                continue;
+            }
+            String key = ApkFileNames.normalize(displayNameOf(file.getName()));
+            if (!key.isEmpty()) {
+                downloadedKeys.add(key);
+            }
+        }
     }
 
     /** 远端 APK 与本机已安装版本比较，结果作为行角标。 */
@@ -388,18 +561,67 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------ 下载
 
+    /**
+     * Android 6 起读写外部存储需要运行时授权；未授权时浏览 /sdcard、回退到外部目录都会失败。
+     * 下载本身已经改为优先走内部存储，这里只是让"本机文件上传"能选到外置存储的内容。
+     */
+    private void requestStoragePermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        String[] permissions = {
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+        };
+        for (String permission : permissions) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(permissions, REQUEST_STORAGE_PERMISSION);
+                return;
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        // 拒绝也不影响主流程：下载走内部存储，仍然可用
+    }
+
     private File downloadDir() {
-        File dir = getExternalFilesDir("downloads");
+        // 优先用内部存储：/data/data/<pkg>/files 一定可写，不受外部存储挂载状态、
+        // ROM 权限限制或 sdcardfs bug 影响（部分 Android 6 电视盒子对
+        // /storage/emulated/0/Android/data/<pkg> 会返回 EACCES）。
+        File internal = new File(getFilesDir(), "downloads");
+        if (ensureWritableDir(internal)) {
+            return internal;
+        }
+        File external = getExternalFilesDir("downloads");
+        if (ensureWritableDir(external)) {
+            return external;
+        }
+        // 两者都不可写时仍返回内部路径，让上层明确报错而不是静默失败
+        return internal;
+    }
+
+    private static boolean ensureWritableDir(File dir) {
         if (dir == null) {
-            dir = new File(getFilesDir(), "downloads");
+            return false;
+        }
+        if (dir.isDirectory()) {
+            return dir.canWrite();
         }
         //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        return dir;
+        return dir.mkdirs() && dir.canWrite();
     }
 
     private void downloadAnd(final RemoteEntry entry, final boolean openAfter) {
-        final File destination = FileUtils.uniqueFile(downloadDir(), entry.name);
+        File dir = downloadDir();
+        if (!ensureWritableDir(dir)) {
+            toast(getString(R.string.storage_unavailable));
+            return;
+        }
+        final File destination = FileUtils.uniqueFile(dir, entry.name);
         if (destination == null) {
             toast(getString(R.string.storage_unavailable));
             return;
@@ -429,7 +651,7 @@ public class MainActivity extends Activity {
                 return;
             }
             if (FileUtils.isApk(file.getName())) {
-                installApk(uri);
+                installApk(file);
                 return;
             }
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -441,7 +663,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void installApk(Uri uri) {
+    private static final String APK_MIME = "application/vnd.android.package-archive";
+    private static final String ACTION_INSTALL_RESULT = "com.example.tvwebdavbox.INSTALL_RESULT";
+
+    /**
+     * 调起安装。安卓 6 的坑在于：系统安装器只声明了 file 方案的 intent-filter，
+     * 而我们的文件在内部私有目录（file:// 安装器读不到 → "解析软件包时出现问题"），
+     * content:// 又匹配不到 filter（→ 没有可以打开该文件的应用）。
+     * 所以按"最不依赖外部权限"的顺序依次尝试。
+     */
+    private void installApk(File file) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && !getPackageManager().canRequestPackageInstalls()) {
             toast(getString(R.string.allow_unknown_sources));
@@ -453,13 +684,337 @@ public class MainActivity extends Activity {
             }
             return;
         }
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(uri, "application/vnd.android.package-archive");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        pendingInstallFile = file;
+        sharedCopyFile = null;
+        awaitingInstallResult = true;
+        installCleanupHandled = false;
+
+        String restriction = detectInstallRestriction();
+        if (restriction != null) {
+            showInstallRestrictedDialog(restriction);
+            return;
+        }
+
+        // Android 6/7 的盒子：会话安装常被 ROM 判定为"用户限制"
+        // （INSTALL_FAILED_USER_RESTRICTED / INSTALL_CANCELED_BY_USER），
+        // 这几代系统最认的是"公共目录 + file:// → 原生安装确认框"，所以先走老路。
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N) {
+            if (installFromSharedCopy(file)) {
+                return;
+            }
+            if (installBySession(file)) {
+                return;
+            }
+            if (installVisible(file)) {
+                return;
+            }
+            toast(getString(R.string.install_no_handler, file.getAbsolutePath()));
+            return;
+        }
+
+        // Android 8+：会话安装最稳
+        if (installBySession(file)) {
+            return;
+        }
+        if (installVisible(file)) {
+            return;
+        }
+
+        toast(getString(R.string.install_no_handler, file.getAbsolutePath()));
+    }
+
+    /** 显式组件 → 隐式 content Intent → 复制到公共目录走 file:// */
+    private boolean installVisible(File file) {
+        pendingInstallFile = file;
+        if (installExplicit(file)) {
+            return true;
+        }
+        Uri contentUri = LocalFileProvider.uriFor(this, file);
+        Intent install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+        install.setDataAndType(contentUri, APK_MIME);
+        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (tryStart(install)) {
+            return true;
+        }
+        Intent view = new Intent(Intent.ACTION_VIEW);
+        view.setDataAndType(contentUri, APK_MIME);
+        view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (tryStart(view)) {
+            return true;
+        }
+        return installFromSharedCopy(file);
+    }
+
+    private File pendingInstallFile;
+    /** 为安装而复制到公共目录的副本，安装成功后可以一起清理。 */
+    private File sharedCopyFile;
+    private boolean awaitingInstallResult;
+    private boolean installCleanupHandled;
+
+    /** 预先探测系统的安装限制，能直接给出原因而不是等安装器报错 */
+    private String detectInstallRestriction() {
+        try {
+            android.os.UserManager um =
+                    (android.os.UserManager) getSystemService(USER_SERVICE);
+            if (um != null) {
+                if (um.hasUserRestriction(android.os.UserManager.DISALLOW_INSTALL_APPS)) {
+                    return "系统策略禁止安装应用（DISALLOW_INSTALL_APPS）";
+                }
+                if (um.hasUserRestriction(android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)) {
+                    return "未知来源安装被系统策略关闭（DISALLOW_INSTALL_UNKNOWN_SOURCES）";
+                }
+            }
+            int nonMarket = android.provider.Settings.Global.getInt(
+                    getContentResolver(), "install_non_market_apps", -1);
+            if (nonMarket == 0) {
+                return "系统设置里的「未知来源」开关仍是关闭状态";
+            }
+        } catch (Throwable ignored) {
+            // 探测失败就不拦
+        }
+        return null;
+    }
+
+    /** 安装被系统限制时：给出可操作的解释，并提供「设置 / 重试」 */
+    private void showInstallRestrictedDialog(final String detail) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.install_restricted_title)
+                .setMessage(getString(R.string.install_restricted_message, detail))
+                .setNegativeButton(R.string.cancel, null)
+                .setNeutralButton(R.string.retry, (dialog, which) -> {
+                    if (pendingInstallFile != null) {
+                        if (!installVisible(pendingInstallFile)) {
+                            toast(getString(R.string.install_no_handler,
+                                    pendingInstallFile.getAbsolutePath()));
+                        }
+                    }
+                })
+                .setPositiveButton(R.string.settings, (dialog, which) -> openInstallSettings())
+                .show();
+    }
+
+    private void openInstallSettings() {
+        Intent[] candidates = {
+                new Intent("android.settings.MANAGE_UNKNOWN_APP_SOURCES"),
+                new Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS),
+                new Intent(android.provider.Settings.ACTION_SETTINGS)
+        };
+        for (Intent intent : candidates) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStart(intent)) {
+                return;
+            }
+        }
+        toast(getString(R.string.install_no_handler, getString(R.string.install_restricted_title)));
+    }
+
+    private boolean installBySession(File file) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return false;
+        }
+        PackageInstaller installer = getPackageManager().getPackageInstaller();
+        PackageInstaller.Session session = null;
+        int sessionId = -1;
+        try {
+            PackageInstaller.SessionParams params =
+                    new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            sessionId = installer.createSession(params);
+            session = installer.openSession(sessionId);
+
+            InputStream input = new FileInputStream(file);
+            OutputStream output = session.openWrite("base.apk", 0, file.length());
+            try {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                }
+                output.flush();
+                session.fsync(output);
+            } finally {
+                try {
+                    output.close();
+                } catch (IOException ignored) {
+                    // 忽略
+                }
+                input.close();
+            }
+
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1);
+                    if (status == PackageInstaller.STATUS_SUCCESS) {
+                        toast(getString(R.string.install_started));
+                        finishInstallAndMaybeCleanup();
+                    } else {
+                        String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                        if (TextUtils.isEmpty(message)) {
+                            message = "status=" + status;
+                        }
+                        if (pendingInstallFile != null && installVisible(pendingInstallFile)) {
+                            return;
+                        }
+                        showInstallRestrictedDialog(message);
+                    }
+                    try {
+                        unregisterReceiver(this);
+                    } catch (Exception ignored) {
+                        // 忽略
+                    }
+                }
+            };
+            registerReceiver(receiver, new IntentFilter(ACTION_INSTALL_RESULT));
+
+            Intent result = new Intent(ACTION_INSTALL_RESULT).setPackage(getPackageName());
+            PendingIntent pending = PendingIntent.getBroadcast(this, sessionId, result,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            session.commit(pending.getIntentSender());
+            session.close();
+            return true;
+        } catch (Throwable t) {
+            if (session != null) {
+                try {
+                    session.close();
+                } catch (Exception ignored) {
+                    // 忽略
+                }
+            }
+            if (sessionId != -1) {
+                try {
+                    installer.abandonSession(sessionId);
+                } catch (Exception ignored) {
+                    // 忽略
+                }
+            }
+            return false;
+        }
+    }
+
+    private boolean installExplicit(File file) {
+        Uri uri = LocalFileProvider.uriFor(this, file);
+        String[][] candidates = {
+                {"com.android.packageinstaller", "com.android.packageinstaller.PackageInstallerActivity"},
+                {"com.google.android.packageinstaller", "com.android.packageinstaller.PackageInstallerActivity"},
+                {"com.android.packageinstaller", "com.android.packageinstaller.InstallAppProgress"},
+                {"com.lenovo.packageinstaller", "com.lenovo.packageinstaller.PackageInstallerActivity"}
+        };
+        for (String[] candidate : candidates) {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setClassName(candidate[0], candidate[1]);
+            intent.setDataAndType(uri, APK_MIME);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStart(intent)) {
+                return true;
+            }
+            Intent install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+            install.setClassName(candidate[0], candidate[1]);
+            install.setDataAndType(uri, APK_MIME);
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStart(install)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean installFromSharedCopy(File file) {
+        try {
+            File publicDir = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS);
+            if (publicDir == null || (!publicDir.exists() && !publicDir.mkdirs())) {
+                return false;
+            }
+            File copy = FileUtils.uniqueFile(publicDir, file.getName());
+            if (copy == null) {
+                return false;
+            }
+            FileUtils.copyFile(file, copy);
+            if (!copy.exists() || copy.length() != file.length()) {
+                return false;
+            }
+            sharedCopyFile = copy;
+            toast(getString(R.string.install_shared_copy_hint, copy.getAbsolutePath()));
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.fromFile(copy), APK_MIME);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            return tryStart(intent);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 安装流程结束：按设置自动清理安装包，或弹窗询问 */
+    private void finishInstallAndMaybeCleanup() {
+        if (installCleanupHandled) {
+            return;
+        }
+        installCleanupHandled = true;
+        awaitingInstallResult = false;
+        if (isFinishing()) {
+            return;
+        }
+        String detail = describeInstallFiles();
+        if (PreferenceStore.isAutoCleanAfterInstall(this)) {
+            deletePendingApks();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.install_clean_title)
+                .setMessage(getString(R.string.install_clean_message, detail))
+                .setNegativeButton(R.string.install_clean_keep, (dialog, which) -> {
+                    pendingInstallFile = null;
+                    sharedCopyFile = null;
+                })
+                .setPositiveButton(R.string.install_clean_delete, (dialog, which) -> deletePendingApks())
+                .show();
+    }
+
+    private String describeInstallFiles() {
+        StringBuilder builder = new StringBuilder();
+        if (pendingInstallFile != null && pendingInstallFile.exists()) {
+            builder.append(pendingInstallFile.getAbsolutePath());
+        }
+        if (sharedCopyFile != null && sharedCopyFile.exists()
+                && (pendingInstallFile == null
+                || !sharedCopyFile.getAbsolutePath().equals(pendingInstallFile.getAbsolutePath()))) {
+            if (builder.length() > 0) {
+                builder.append('\n');
+            }
+            builder.append(sharedCopyFile.getAbsolutePath());
+        }
+        return builder.length() == 0 ? getString(R.string.install_clean_none) : builder.toString();
+    }
+
+    private void deletePendingApks() {
+        int deleted = 0;
+        File download = pendingInstallFile;
+        File copy = sharedCopyFile;
+        if (download != null && download.exists() && download.delete()) {
+            deleted++;
+        }
+        if (copy != null && copy.exists()
+                && (download == null || !copy.getAbsolutePath().equals(download.getAbsolutePath()))
+                && copy.delete()) {
+            deleted++;
+        }
+        pendingInstallFile = null;
+        sharedCopyFile = null;
+        toast(getString(R.string.install_clean_done_fmt, deleted));
+        // 本地下载目录可能被清空，重绘一次列表即可
+        InstalledAppRepository.invalidate();
+    }
+
+    private boolean tryStart(Intent intent) {
         try {
             startActivity(intent);
-        } catch (Exception e) {
-            toast(getString(R.string.no_handler));
+            return true;
+        } catch (Throwable t) {
+            // ActivityNotFoundException / FileUriExposedException / SecurityException
+            return false;
         }
     }
 
@@ -520,6 +1075,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             int success = 0;
             List<String> failures = new ArrayList<>();
+            List<String> uploadedNames = new ArrayList<>();
             for (int i = 0; i < total; i++) {
                 File source = new File(paths[i]);
                 final String name = names[i];
@@ -534,16 +1090,20 @@ public class MainActivity extends Activity {
                         ui.post(() -> updateBatchProgress(index + 1, total, percent, name));
                     });
                     success++;
+                    uploadedNames.add(name);
                 } catch (Exception e) {
                     failures.add(name + "：" + describeErrorText(e));
                 }
             }
             final int uploaded = success;
+            final int cleaned = removeOlderBackups(dirUrl, uploadedNames);
             ui.post(() -> {
                 setBusy(false, null);
                 refresh(false);
                 if (failures.isEmpty()) {
-                    toast(getString(R.string.upload_batch_done, uploaded));
+                    toast(cleaned > 0
+                            ? getString(R.string.upload_batch_done_cleaned, uploaded, cleaned)
+                            : getString(R.string.upload_batch_done, uploaded));
                 } else {
                     StringBuilder sb = new StringBuilder(
                             getString(R.string.upload_batch_failed, failures.size()));
@@ -558,6 +1118,59 @@ public class MainActivity extends Activity {
                 }
             });
         }, "webdav-upload-batch").start();
+    }
+
+    /**
+     * 上传新版本后删除云端同目录里同一应用的旧备份，
+     * 否则新旧两份并存，列表每次都会提示"可升级"。
+     * 只删版本比新上传低的同名备份；版本更高或无法比较的一律保留。
+     */
+    private int removeOlderBackups(String dirUrl, List<String> uploadedNames) {
+        if (dirUrl == null || uploadedNames == null || uploadedNames.isEmpty()) {
+            return 0;
+        }
+        // 被上传的应用键 → 新版本号
+        Map<String, String> newVersions = new HashMap<>();
+        for (String name : uploadedNames) {
+            String[] parsed = ApkFileNames.parse(name);
+            if (parsed != null) {
+                newVersions.put(ApkFileNames.normalize(parsed[0]), parsed[1]);
+            }
+        }
+        if (newVersions.isEmpty()) {
+            return 0;
+        }
+        int deleted = 0;
+        try {
+            List<RemoteEntry> entries = client.list(dirUrl);
+            for (RemoteEntry entry : entries) {
+                if (entry == null || entry.directory) {
+                    continue;
+                }
+                String[] parsed = ApkFileNames.parse(entry.name);
+                if (parsed == null) {
+                    continue;
+                }
+                String newVersion = newVersions.get(ApkFileNames.normalize(parsed[0]));
+                if (newVersion == null) {
+                    continue;
+                }
+                // compare(旧版本, 新版本) == REMOTE_NEWER → 新版本更高，可以删旧的
+                if (VersionComparator.compare(parsed[1], newVersion)
+                        != VersionComparator.Result.REMOTE_NEWER) {
+                    continue;
+                }
+                try {
+                    client.delete(entry.url);
+                    deleted++;
+                } catch (Exception ignored) {
+                    // 单个旧文件删不掉不影响整体
+                }
+            }
+        } catch (Exception ignored) {
+            // 列目录失败就跳过清理
+        }
+        return deleted;
     }
 
     private String describeErrorText(Exception e) {
@@ -579,10 +1192,19 @@ public class MainActivity extends Activity {
             return;
         }
         final String dirUrl = currentUrl;
+        final int[] removed = {0};
         runTask(getString(R.string.uploading, source.getName()),
-                listener -> client.upload(source, dirUrl, source.getName(), listener),
+                listener -> {
+                    client.upload(source, dirUrl, source.getName(), listener);
+                    removed[0] = removeOlderBackups(
+                            dirUrl, Collections.singletonList(source.getName()));
+                },
                 () -> {
-                    toast(getString(R.string.upload_done));
+                    if (removed[0] > 0) {
+                        toast(getString(R.string.upload_done_cleaned, removed[0]));
+                    } else {
+                        toast(getString(R.string.upload_done));
+                    }
                     refresh(false);
                 });
     }
@@ -678,7 +1300,6 @@ public class MainActivity extends Activity {
         buttonRefresh.setEnabled(!value);
         buttonApps.setEnabled(!value);
         buttonUpload.setEnabled(!value);
-        buttonMkcol.setEnabled(!value);
     }
 
     // ------------------------------------------------------------ 提示与错误
@@ -728,7 +1349,7 @@ public class MainActivity extends Activity {
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 int position = listView.getSelectedItemPosition();
-                if (position == ListView.INVALID_POSITION && adapter.getCount() > 0) {
+                if (position == GridView.INVALID_POSITION && adapter.getCount() > 0) {
                     position = 0;
                 }
                 showActions(position);

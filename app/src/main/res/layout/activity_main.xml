@@ -67,13 +67,6 @@
             android:layout_marginStart="8dp"
             android:text="@string/action_upload" />
 
-        <Button
-            android:id="@+id/btn_mkcol"
-            style="@style/TvButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="@string/action_new_folder" />
     </LinearLayout>
 
     <TextView
@@ -94,17 +87,21 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <ListView
+        <GridView
             android:id="@+id/list_files"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:cacheColorHint="@android:color/transparent"
-            android:divider="@color/divider"
-            android:dividerHeight="2dp"
+            android:columnWidth="120dp"
+            android:horizontalSpacing="12dp"
             android:listSelector="@drawable/row_selector"
+            android:numColumns="2"
             android:paddingStart="16dp"
+            android:paddingTop="4dp"
             android:paddingEnd="16dp"
-            android:scrollbars="none" />
+            android:scrollbars="none"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="12dp" />
 
         <TextView
             android:id="@+id/empty_text"

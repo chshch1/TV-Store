@@ -9,7 +9,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.view.KeyEvent;
 import android.view.View;
-import android.widget.ListView;
+import android.widget.GridView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -29,7 +29,7 @@ public class LocalPickerActivity extends Activity {
 
     private static final int REQUEST_STORAGE = 3001;
 
-    private ListView listView;
+    private GridView listView;
     private TextView pathText;
     private TextView titleText;
     private EntryAdapter adapter;
@@ -113,8 +113,20 @@ public class LocalPickerActivity extends Activity {
             for (File file : fileList) {
                 if (file.isDirectory()) {
                     rows.add(new RowItem(file.getName(), getString(R.string.type_folder), true, file));
+                    continue;
+                }
+                String meta = FileUtils.humanSize(file.length());
+                if (ApkFileNames.isApk(file.getName())) {
+                    // 与首页一致：只显示应用名，版本放到副标题
+                    String display = displayNameOf(file.getName());
+                    String version = versionOf(file.getName());
+                    if (!version.isEmpty()) {
+                        meta = getString(R.string.row_version_size, version, meta);
+                    }
+                    RowItem row = new RowItem(display, meta, false, file);
+                    row.icon = getDrawable(R.drawable.ic_apk);
+                    rows.add(row);
                 } else {
-                    String meta = FileUtils.humanSize(file.length());
                     rows.add(new RowItem(file.getName(), meta, false, file));
                 }
             }
@@ -125,6 +137,27 @@ public class LocalPickerActivity extends Activity {
             listView.requestFocus();
             listView.setSelection(0);
         }
+    }
+
+    private static String displayNameOf(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        String stem = ApkFileNames.isApk(fileName)
+                ? fileName.substring(0, fileName.length() - 4) : fileName;
+        int index = stem.toLowerCase(Locale.US).lastIndexOf("_v");
+        if (index > 0) {
+            String tail = stem.substring(index + 2);
+            if (!tail.isEmpty() && Character.isDigit(tail.charAt(0))) {
+                stem = stem.substring(0, index);
+            }
+        }
+        return stem;
+    }
+
+    private static String versionOf(String fileName) {
+        String[] parsed = ApkFileNames.parse(fileName);
+        return parsed == null ? "" : parsed[1];
     }
 
     private void onEntryClicked(int position) {

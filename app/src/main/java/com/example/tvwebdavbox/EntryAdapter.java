@@ -61,6 +61,7 @@ public class EntryAdapter extends BaseAdapter {
             holder.name = convertView.findViewById(R.id.row_name);
             holder.meta = convertView.findViewById(R.id.row_meta);
             holder.badge = convertView.findViewById(R.id.row_badge);
+            holder.localBadge = convertView.findViewById(R.id.row_local_badge);
             convertView.setTag(holder);
         } else {
             holder = (ViewHolder) convertView.getTag();
@@ -71,7 +72,12 @@ public class EntryAdapter extends BaseAdapter {
         holder.meta.setText(item.subtitle);
         holder.meta.setVisibility(item.subtitle == null || item.subtitle.isEmpty()
                 ? View.GONE : View.VISIBLE);
-        holder.icon.setImageResource(item.directory ? R.drawable.ic_folder : R.drawable.ic_file);
+        if (item.icon != null) {
+            holder.icon.setImageDrawable(item.icon);
+        } else {
+            holder.icon.setImageResource(item.directory ? R.drawable.ic_folder : R.drawable.ic_file);
+        }
+        holder.localBadge.setVisibility(item.downloaded ? View.VISIBLE : View.GONE);
 
         if (item.badge == null || item.badge.isEmpty()) {
             holder.badge.setVisibility(View.GONE);
@@ -89,5 +95,6 @@ public class EntryAdapter extends BaseAdapter {
         TextView name;
         TextView meta;
         TextView badge;
+        TextView localBadge;
     }
 }

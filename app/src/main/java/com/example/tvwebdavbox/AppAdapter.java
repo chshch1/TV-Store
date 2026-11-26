@@ -10,8 +10,10 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** 已安装应用列表适配器，支持多选。 */
@@ -21,6 +23,9 @@ public class AppAdapter extends BaseAdapter {
     private final Context context;
     private final List<InstalledApp> items = new ArrayList<>();
     private final Set<String> selected = new LinkedHashSet<>();
+    /** packageName → 云端状态文案 / 颜色（由 AppListActivity 计算后灌进来）。 */
+    private final Map<String, String> cloudTexts = new HashMap<>();
+    private final Map<String, Integer> cloudColors = new HashMap<>();
 
     public AppAdapter(Context context) {
         this.context = context;
@@ -34,6 +39,28 @@ public class AppAdapter extends BaseAdapter {
         }
         if (!keepSelection) {
             selected.clear();
+        }
+        notifyDataSetChanged();
+    }
+
+    public void setCloudInfo(Map<String, String> texts, Map<String, Integer> colors) {
+        cloudTexts.clear();
+        cloudColors.clear();
+        if (texts != null) {
+            cloudTexts.putAll(texts);
+        }
+        if (colors != null) {
+            cloudColors.putAll(colors);
+        }
+        notifyDataSetChanged();
+    }
+
+    public void selectPackages(List<InstalledApp> itemsToSelect) {
+        if (itemsToSelect == null) {
+            return;
+        }
+        for (InstalledApp item : itemsToSelect) {
+            selected.add(item.packageName);
         }
         notifyDataSetChanged();
     }
@@ -112,6 +139,7 @@ public class AppAdapter extends BaseAdapter {
             holder.icon = convertView.findViewById(R.id.app_icon);
             holder.name = convertView.findViewById(R.id.app_name);
             holder.meta = convertView.findViewById(R.id.app_meta);
+            holder.cloud = convertView.findViewById(R.id.app_cloud);
             convertView.setTag(holder);
         } else {
             holder = (ViewHolder) convertView.getTag();
@@ -121,6 +149,15 @@ public class AppAdapter extends BaseAdapter {
         holder.name.setText(item.label);
         holder.meta.setText(item.metaText());
         holder.check.setChecked(selected.contains(item.packageName));
+        String cloudText = cloudTexts.get(item.packageName);
+        if (cloudText == null || cloudText.isEmpty()) {
+            holder.cloud.setVisibility(View.GONE);
+        } else {
+            holder.cloud.setVisibility(View.VISIBLE);
+            holder.cloud.setText(cloudText);
+            Integer color = cloudColors.get(item.packageName);
+            holder.cloud.setTextColor(color == null ? 0xFF9AA5B1 : color);
+        }
         if (item.icon != null) {
             holder.icon.setImageDrawable(item.icon);
         } else {
@@ -136,5 +173,6 @@ public class AppAdapter extends BaseAdapter {
         ImageView icon;
         TextView name;
         TextView meta;
+        TextView cloud;
     }
 }

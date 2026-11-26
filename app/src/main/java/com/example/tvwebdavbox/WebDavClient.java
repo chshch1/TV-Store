@@ -661,6 +661,9 @@ public final class WebDavClient {
                         listener.onProgress(received, total);
                     }
                 }
+                if (total > 0 && received != total) {
+                    throw new IOException("下载不完整：" + received + "/" + total);
+                }
                 output.flush();
             } finally {
                 try {
