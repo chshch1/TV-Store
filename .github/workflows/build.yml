@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -20,23 +19,63 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 安装所需 SDK 组件
+      - name: 定位工程目录
+        id: proj
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          GRADLEW=$(find . -maxdepth 3 -name gradlew -type f -not -path './.git/*' | head -n 1)
+          if [ -z "$GRADLEW" ]; then
+            echo "::error::仓库里找不到 gradlew"
+            ls -la
+            exit 1
+          fi
+          DIR=$(dirname "$GRADLEW")
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "工程目录：$DIR"
 
-      - name: 赋予 gradlew 执行权限
-        run: chmod +x gradlew
+      - name: 准备 local.properties 与 SDK
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then SDK=/usr/local/lib/android/sdk; fi
+          echo "使用 SDK：$SDK"
+          echo "sdk.dir=$SDK" > local.properties
+          echo "---- platforms ----"; ls "$SDK/platforms" 2>/dev/null || true
+          echo "---- build-tools ----"; ls "$SDK/build-tools" 2>/dev/null || true
+          java -version
+          if [ ! -d "$SDK/platforms/android-35" ]; then
+            echo "缺少 platforms/android-35，尝试安装"
+            SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+            [ -x "$SM" ] || SM=$(command -v sdkmanager || true)
+            if [ -n "$SM" ]; then
+              yes | "$SM" --licenses > /dev/null 2>&1 || true
+              "$SM" --sdk_root="$SDK" --install "platforms;android-35" "build-tools;34.0.0"
+            else
+              echo "::error::找不到 sdkmanager，无法安装 platforms/android-35"
+              exit 1
+            fi
+          else
+            echo "platforms/android-35 已存在，跳过安装"
+          fi
+
+      - name: 校验 Gradle wrapper
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+          ls -la gradle/wrapper
+          ./gradlew --version
 
       - name: 编译 Release APK
-        run: ./gradlew assembleRelease --no-daemon
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: TVWebDavBox-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: ${{ steps.proj.outputs.dir }}/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: 失败时给出提示
+        if: failure()
+        run: echo "::notice::构建失败。请展开标红的步骤，把它最后 20 行日志发我定位原因。"
