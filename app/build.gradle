@@ -15,10 +15,10 @@ def davValue = { String propKey, String envKey, String fallback ->
     }
     return (v == null || v.isEmpty()) ? fallback : v
 }
-def davUrl = davValue('defaultDavUrl', 'DAV_URL', '')
+def davUrl = davValue('defaultDavUrl', 'DAV_URL', 'http://192.168.31.64:8081')
 def davUser = davValue('defaultDavUser', 'DAV_USER', '')
 def davPassword = davValue('defaultDavPassword', 'DAV_PASSWORD', '')
-def davRoot = davValue('defaultDavRoot', 'DAV_ROOT', '/TVBox/')
+def davRoot = davValue('defaultDavRoot', 'DAV_ROOT', '/PushTV/Backups/')
 def davInsecure = davValue('defaultDavInsecure', 'DAV_INSECURE', 'false')
 def javaEscape = { String s -> s.replace('\\', '\\\\').replace('"', '\\"') }
 
@@ -52,8 +52,8 @@ android {
         // Android 6.0 (API 23) 是最低版本；不设 ABI 过滤，本工程无原生库
         minSdk 23
         targetSdk 28
-        versionCode 5
-        versionName '1.2.1'
+        versionCode 20
+        versionName '1.2.16'
 
         // 把默认 WebDAV 配置编译进 APK
         buildConfigField "String", "DAV_URL", "\"${javaEscape(davUrl)}\""
