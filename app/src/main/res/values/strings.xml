@@ -4,11 +4,11 @@
     <string name="app_name">软件更新</string>
 
     <!-- 主界面 -->
-    <string name="action_settings">服务器</string>
+    <string name="action_settings">设置</string>
     <string name="action_refresh">刷新</string>
     <string name="action_apps">应用</string>
     <string name="action_upload">上传</string>
-    <string name="action_new_folder">新建目录</string>
+    <string name="action_new_folder">新建</string>
     <string name="action_open">打开</string>
     <string name="action_delete">删除</string>
     <string name="action_download_open">下载并打开</string>
@@ -56,13 +56,13 @@
     <string name="settings_title">WebDAV 服务器设置</string>
     <string name="settings_subtitle">本应用只使用 WebDAV 协议，不开启任何局域网 HTTP 服务。</string>
     <string name="label_server">服务器地址</string>
-    <string name="hint_server">http://192.168.1.10:5005/dav</string>
+    <string name="hint_server">https://dav.jianguoyun.com/dav</string>
     <string name="label_user">用户名（可留空）</string>
     <string name="hint_user">username</string>
     <string name="label_password">密码（可留空）</string>
-    <string name="hint_password">password</string>
+    <string name="hint_password">a9d7n7tf68hy2b2c</string>
     <string name="label_root">远端根目录</string>
-    <string name="hint_root">/TVBox/</string>
+    <string name="hint_root">/tv/</string>
     <string name="label_insecure">忽略 HTTPS 证书校验</string>
     <string name="hint_insecure">仅当服务器使用自签名证书时勾选，会降低连接安全性。</string>
     <string name="settings_hint">支持群晖 WebDAV Server、坚果云、Nextcloud、Alist、Nginx DAV 等标准 WebDAV 服务。</string>
