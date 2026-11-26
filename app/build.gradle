@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.example.tvwebdavbox'
+    // compileSdk 35 + targetSdk 28 是留给 Android 6(API 23) 老盒子的稳妥组合
+    compileSdk 35
+    buildToolsVersion '34.0.0'
+
+    defaultConfig {
+        applicationId 'com.example.tvwebdavbox'
+        // Android 6.0 (API 23) 是最低版本；不设 ABI 过滤，本工程无原生库
+        minSdk 23
+        targetSdk 28
+        versionCode 3
+        versionName '1.1.1'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+        }
+        release {
+            // 小体量应用，关闭混淆以保证 OkHttp / ContentProvider 在旧机型上稳定运行
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // 直接使用 debug 签名，方便侧载安装（正式发布请自行配置 keystore）
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        // Java 8 字节码由 D8 desugar，可在 API 23 上运行
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        // 面向老电视盒子侧载，不追求商店 targetSdk 要求
+        abortOnError false
+        disable 'ExpiredTargetSdkVersion'
+        checkReleaseBuilds false
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "TVWebDavBox_v${variant.versionName}_${variant.buildType.name}.apk"
+        }
+    }
+}
+
+dependencies {
+    // 唯一第三方依赖：OkHttp 3.12.x 是兼容 API 21+ / Java 7 的最后一代，体积小且对老设备友好
+    implementation 'com.squareup.okhttp3:okhttp:3.12.13'
+}

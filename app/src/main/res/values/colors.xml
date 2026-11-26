@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF0E1116</color>
+    <color name="bg_panel">#FF161B22</color>
+    <color name="bg_row_selected">#FF1F6FEB</color>
+    <color name="bg_row_pressed">#FF264F78</color>
+    <color name="accent">#FF4FC3F7</color>
+    <color name="text_primary">#FFECEFF4</color>
+    <color name="text_secondary">#FF9AA5B1</color>
+    <color name="divider">#FF242C37</color>
+    <color name="folder">#FFFFCA28</color>
+    <color name="file">#FF9AA5B1</color>
+    <color name="transparent">#00000000</color>
+</resources>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">WebDAV 电视盒</string>
+
+    <!-- 主界面 -->
+    <string name="action_settings">服务器</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_apps">应用</string>
+    <string name="action_upload">上传</string>
+    <string name="action_new_folder">新建目录</string>
+    <string name="action_open">打开</string>
+    <string name="action_delete">删除</string>
+    <string name="action_download_open">下载并打开</string>
+    <string name="action_download_install">下载并安装</string>
+    <string name="action_download_save">仅下载到本机</string>
+    <string name="action_test">测试连接</string>
+    <string name="action_save">保存</string>
+
+    <string name="path_placeholder">未连接 WebDAV 服务器</string>
+    <string name="status_unconfigured">请先配置 WebDAV 服务器</string>
+    <string name="status_connected">已连接 · 共 %1$d 项</string>
+    <string name="loading">正在读取目录…</string>
+    <string name="empty_directory">此目录为空</string>
+    <string name="type_folder">文件夹</string>
+    <string name="select_first">请先在列表中选择一项</string>
+    <string name="key_hint">方向键选择 · 确认键打开 · 长按确认键或菜单键弹出操作 · 返回键上一级</string>
+    <string name="busy">正在处理，请稍候</string>
+
+    <string name="delete_confirm">确定永久删除“%1$s”吗？此操作无法撤销。</string>
+    <string name="deleting">正在删除…</string>
+    <string name="delete_done">已删除</string>
+    <string name="downloading">正在下载 %1$s</string>
+    <string name="download_done">已下载到：%1$s</string>
+    <string name="uploading">正在上传 %1$s</string>
+    <string name="upload_done">上传完成</string>
+    <string name="creating_folder">正在创建目录…</string>
+    <string name="folder_created">目录已创建</string>
+    <string name="hint_folder_name">目录名称</string>
+    <string name="invalid_folder_name">名称不能为空，也不能包含斜杠</string>
+    <string name="progress_percent">%1$s / %2$s（%3$d%%）</string>
+
+    <string name="storage_unavailable">无法访问本机存储目录</string>
+    <string name="file_missing">文件不存在</string>
+    <string name="no_handler">没有可以打开该文件的应用</string>
+    <string name="allow_unknown_sources">请先在系统设置中允许本应用安装未知来源应用</string>
+
+    <string name="error_title">出错了</string>
+    <string name="ssl_error_hint">HTTPS 握手失败，若使用自签名证书，请在“服务器设置”中勾选“忽略证书校验”。</string>
+    <string name="network_error_hint">网络连接失败，请检查地址、端口与电视的网络。</string>
+
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
+
+    <!-- 服务器设置 -->
+    <string name="settings_title">WebDAV 服务器设置</string>
+    <string name="settings_subtitle">本应用只使用 WebDAV 协议，不开启任何局域网 HTTP 服务。</string>
+    <string name="label_server">服务器地址</string>
+    <string name="hint_server">http://192.168.1.10:5005/dav</string>
+    <string name="label_user">用户名（可留空）</string>
+    <string name="hint_user">username</string>
+    <string name="label_password">密码（可留空）</string>
+    <string name="hint_password">password</string>
+    <string name="label_root">远端根目录</string>
+    <string name="hint_root">/TVBox/</string>
+    <string name="label_insecure">忽略 HTTPS 证书校验</string>
+    <string name="hint_insecure">仅当服务器使用自签名证书时勾选，会降低连接安全性。</string>
+    <string name="settings_hint">支持群晖 WebDAV Server、坚果云、Nextcloud、Alist、Nginx DAV 等标准 WebDAV 服务。</string>
+    <string name="error_no_server">请填写服务器地址</string>
+    <string name="testing">测试中…</string>
+    <string name="test_ok">连接成功</string>
+    <string name="test_failed">连接失败</string>
+    <string name="saved">已保存</string>
+
+    <!-- 本地文件选择 -->
+    <string name="pick_local_file">选择要上传的本机文件</string>
+    <string name="picker_hint">方向键选择 · 确认键进入目录或选中文件 · 返回键上一级</string>
+    <string name="storage_permission_denied">未授予存储权限，只能选择应用自己的目录</string>
+    <string name="cannot_access_directory">无法访问此目录</string>
+
+    <!-- 播放器 -->
+    <string name="play_failed">该视频无法播放，可能是编码不被本机解码器支持</string>
+
+    <!-- 已安装应用多选上传 -->
+    <string name="app_list_title">上传已安装应用</string>
+    <string name="app_list_loading">正在读取已安装应用…</string>
+    <string name="app_list_empty">没有可显示的应用</string>
+    <string name="app_list_empty_diag">未读取到已安装应用\nPackageManager 返回 %1$d 项%2$s</string>
+    <string name="app_list_subtitle_fmt">共 %1$d 个 · 用户 %2$d · 系统 %3$d</string>
+    <string name="app_list_hint">确认键勾选 · 菜单键全选 / 只看用户应用 · 选好后点「上传选中」</string>
+    <string name="app_selection">已选 %1$d / %2$d</string>
+    <string name="app_select_all">全选</string>
+    <string name="app_select_none">全不选</string>
+    <string name="app_show_system">显示全部应用（含系统）</string>
+    <string name="app_hide_system">只看用户应用</string>
+    <string name="app_reload">重新读取</string>
+    <string name="app_none_selected">请先勾选要上传的应用</string>
+    <string name="upload_selected">上传选中（%1$d）</string>
+    <string name="upload_batch_start">准备上传 %1$d 个应用…</string>
+    <string name="upload_batch_progress">第 %1$d/%2$d 个 · %3$d%%</string>
+    <string name="upload_batch_done">已上传 %1$d 个应用</string>
+    <string name="upload_batch_failed">有 %1$d 个应用上传失败</string>
+
+    <!-- 远端 APK 版本比较角标 -->
+    <string name="local_version">本机 v%1$s</string>
+    <string name="badge_not_installed">未安装</string>
+    <string name="badge_same">已安装 · 同版本</string>
+    <string name="badge_upgrade">可升级 %1$s → %2$s</string>
+    <string name="badge_local_newer">本机更高 %1$s</string>
+    <string name="badge_uncomparable">版本无法比较</string>
+
+</resources>
