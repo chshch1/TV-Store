@@ -114,11 +114,18 @@ jobs:
       - name: 列出待发布文件
         run: ls -la dist
 
-      - name: 创建 Release 并附加 APK
+      - name: 创建 Release 或补传 APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.apk \
-            --title "TVWebDavBox $GITHUB_REF_NAME" \
-            --generate-notes
+          # 幂等：网页上先手动建了 Release，这里只补附件；没建过就新建一个
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME 已存在，补传 APK"
+            gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.apk \
+              --title "TVWebDavBox $GITHUB_REF_NAME" \
+              --generate-notes
+          fi
+          echo "完成：${{ github.server_url }}/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME"
 
