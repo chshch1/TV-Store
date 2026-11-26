@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]          # 推送 v1.2.0 这类 tag 时，额外自动发布 Release
   pull_request:
   workflow_dispatch:
 
@@ -19,6 +20,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # GitHub 的 ubuntu-latest 镜像本身已预装 Android SDK（含 platforms/android-35、
+      # build-tools/34.0.0）。这里不再调用 setup-android / sdkmanager，少一个失败点；
+      # 只有当平台目录确实缺失时才回退安装。
       - name: 定位工程目录
         id: proj
         run: |
@@ -39,9 +43,11 @@ jobs:
           if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then SDK=/usr/local/lib/android/sdk; fi
           echo "使用 SDK：$SDK"
           echo "sdk.dir=$SDK" > local.properties
+
           echo "---- platforms ----"; ls "$SDK/platforms" 2>/dev/null || true
           echo "---- build-tools ----"; ls "$SDK/build-tools" 2>/dev/null || true
           java -version
+
           if [ ! -d "$SDK/platforms/android-35" ]; then
             echo "缺少 platforms/android-35，尝试安装"
             SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
@@ -65,6 +71,17 @@ jobs:
           ls -la gradle/wrapper
           ./gradlew --version
 
+      - name: 按 tag 同步版本号（仅 tag 触发时执行）
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          NEW_NAME="${GITHUB_REF_NAME#v}"
+          NEW_CODE="${{ github.run_number }}"
+          echo "tag → versionName=$NEW_NAME, versionCode=$NEW_CODE"
+          sed -i "s/versionCode [0-9][0-9]*/versionCode ${NEW_CODE}/" app/build.gradle
+          sed -i "s/versionName '[^']*'/versionName '${NEW_NAME}'/" app/build.gradle
+          grep -nE "versionCode|versionName" app/build.gradle
+
       - name: 编译 Release APK
         working-directory: ${{ steps.proj.outputs.dir }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
@@ -79,3 +96,29 @@ jobs:
       - name: 失败时给出提示
         if: failure()
         run: echo "::notice::构建失败。请展开标红的步骤，把它最后 20 行日志发我定位原因。"
+
+  # 仅当推送 v* tag 时执行：把刚编译出的 APK 作为一个 GitHub Release 发布出去
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: TVWebDavBox-apk
+          path: dist
+
+      - name: 列出待发布文件
+        run: ls -la dist
+
+      - name: 创建 Release 并附加 APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.apk \
+            --title "TVWebDavBox $GITHUB_REF_NAME" \
+            --generate-notes
+
