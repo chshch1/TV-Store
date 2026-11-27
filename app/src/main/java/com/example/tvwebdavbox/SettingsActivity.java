@@ -72,10 +72,14 @@ public class SettingsActivity extends Activity {
         String builtIn = BuildConfig.DAV_URL == null ? "" : BuildConfig.DAV_URL.trim();
         if (TextUtils.isEmpty(url)) {
             statusText.setText(R.string.settings_status_empty);
+            statusText.setVisibility(View.VISIBLE);
         } else if (!builtIn.isEmpty() && url.equalsIgnoreCase(builtIn)) {
             statusText.setText(getString(R.string.settings_status_default, url));
+            statusText.setVisibility(View.VISIBLE);
         } else {
+            // 没有状态可显示时整行收起来，否则空 TextView 仍占一行高度，看起来像"多余空白"
             statusText.setText("");
+            statusText.setVisibility(View.GONE);
         }
     }
 
