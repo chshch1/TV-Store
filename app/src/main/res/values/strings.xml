@@ -14,7 +14,7 @@
     <string name="action_download_open">下载并打开</string>
     <string name="action_download_install">下载并安装</string>
     <string name="action_download_save">仅下载到本机</string>
-    <string name="action_test">测试连接</string>
+    <string name="action_test">测试</string>
     <string name="action_save">保存</string>
 
     <string name="path_placeholder">未连接 WebDAV 服务器</string>
