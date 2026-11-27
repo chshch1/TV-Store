@@ -173,7 +173,8 @@ public class MainActivity extends Activity {
             InstalledAppRepository.invalidate();
             appIndexReady = false;
             warmUpAppIndex();
-            if (Intent.ACTION_PACKAGE_ADDED.equals(action) && awaitingInstallResult) {
+            if (Intent.ACTION_PACKAGE_ADDED.equals(action) && awaitingInstallResult
+                    && isPendingInstallPackage(pkg)) {
                 awaitingInstallResult = false;
                 ui.post(MainActivity.this::finishInstallAndMaybeCleanup);
             }
@@ -204,6 +205,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resetStaleInstallState();
         // 应用列表页会失效索引，回到主界面时按需重建（后台线程，不卡 UI）
         if (!appIndexReady || !InstalledAppRepository.isReady()) {
             appIndexReady = false;
@@ -687,8 +689,10 @@ public class MainActivity extends Activity {
 
         pendingInstallFile = file;
         sharedCopyFile = null;
+        pendingInstallPackageName = null;
         awaitingInstallResult = true;
         installCleanupHandled = false;
+        installStartedAt = System.currentTimeMillis();
 
         String restriction = detectInstallRestriction();
         if (restriction != null) {
@@ -751,6 +755,7 @@ public class MainActivity extends Activity {
     private File sharedCopyFile;
     private boolean awaitingInstallResult;
     private boolean installCleanupHandled;
+    private long installStartedAt;
 
     /** 预先探测系统的安装限制，能直接给出原因而不是等安装器报错 */
     private String detectInstallRestriction() {
@@ -815,6 +820,7 @@ public class MainActivity extends Activity {
         }
         PackageInstaller installer = getPackageManager().getPackageInstaller();
         PackageInstaller.Session session = null;
+        BroadcastReceiver installReceiver = null;
         int sessionId = -1;
         try {
             PackageInstaller.SessionParams params =
@@ -841,7 +847,7 @@ public class MainActivity extends Activity {
                 input.close();
             }
 
-            BroadcastReceiver receiver = new BroadcastReceiver() {
+            installReceiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1);
@@ -865,7 +871,7 @@ public class MainActivity extends Activity {
                     }
                 }
             };
-            registerReceiver(receiver, new IntentFilter(ACTION_INSTALL_RESULT));
+            registerReceiver(installReceiver, new IntentFilter(ACTION_INSTALL_RESULT));
 
             Intent result = new Intent(ACTION_INSTALL_RESULT).setPackage(getPackageName());
             PendingIntent pending = PendingIntent.getBroadcast(this, sessionId, result,
@@ -874,6 +880,13 @@ public class MainActivity extends Activity {
             session.close();
             return true;
         } catch (Throwable t) {
+            if (installReceiver != null) {
+                try {
+                    unregisterReceiver(installReceiver);
+                } catch (Exception ignored) {
+                    // 忽略
+                }
+            }
             if (session != null) {
                 try {
                     session.close();
@@ -944,6 +957,49 @@ public class MainActivity extends Activity {
             return tryStart(intent);
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    /** 待安装 APK 的真实包名（读不出发回 null，此时不做匹配） */
+    private String pendingInstallPackageName;
+
+    private String resolvePendingPackageName() {
+        if (pendingInstallPackageName != null) {
+            return pendingInstallPackageName;
+        }
+        if (pendingInstallFile == null || !pendingInstallFile.isFile()) {
+            return null;
+        }
+        try {
+            android.content.pm.PackageInfo info = getPackageManager()
+                    .getPackageArchiveInfo(pendingInstallFile.getAbsolutePath(), 0);
+            if (info != null) {
+                pendingInstallPackageName = info.packageName;
+            }
+        } catch (Throwable ignored) {
+            // 解析失败就不做包名匹配
+        }
+        return pendingInstallPackageName;
+    }
+
+    /** 广播回来的包名是否就是我们本次要装的那个包 */
+    private boolean isPendingInstallPackage(String addedPackage) {
+        String expected = resolvePendingPackageName();
+        if (expected == null || addedPackage == null) {
+            // 解析不出包名时退回旧行为，避免完全不触发清理
+            return true;
+        }
+        return expected.equalsIgnoreCase(addedPackage);
+    }
+
+    /** 超过 30 分钟没结果就认为本次安装已放弃，避免后续误触发 */
+    private void resetStaleInstallState() {
+        if (!awaitingInstallResult) {
+            return;
+        }
+        if (System.currentTimeMillis() - installStartedAt > 30 * 60 * 1000L) {
+            awaitingInstallResult = false;
+            installCleanupHandled = false;
         }
     }
 

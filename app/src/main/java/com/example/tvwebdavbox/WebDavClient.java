@@ -636,47 +636,57 @@ public final class WebDavClient {
         Request request = baseRequest(fileUrl).get().build();
         File temp = new File(parent, destination.getName() + ".part");
 
-        try (Response response = http().newCall(request).execute()) {
-            int code = response.code();
-            if (code < 200 || code > 299) {
-                throw new WebDavException(code, "下载失败：" + describe(code));
-            }
-            if (response.body() == null) {
-                throw new IOException("服务器返回内容为空");
-            }
-            long total = response.body().contentLength();
-            InputStream input = response.body().byteStream();
-            FileOutputStream output = new FileOutputStream(temp);
-            try {
-                byte[] buffer = new byte[64 * 1024];
-                long received = 0;
-                long lastNotified = 0;
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, read);
-                    received += read;
-                    if (listener != null && (received - lastNotified >= 256 * 1024
-                            || (total > 0 && received == total))) {
-                        lastNotified = received;
-                        listener.onProgress(received, total);
+        try {
+            try (Response response = http().newCall(request).execute()) {
+                int code = response.code();
+                if (code < 200 || code > 299) {
+                    throw new WebDavException(code, "下载失败：" + describe(code));
+                }
+                if (response.body() == null) {
+                    throw new IOException("服务器返回内容为空");
+                }
+                long total = response.body().contentLength();
+                InputStream input = response.body().byteStream();
+                FileOutputStream output = new FileOutputStream(temp);
+                try {
+                    byte[] buffer = new byte[64 * 1024];
+                    long received = 0;
+                    long lastNotified = 0;
+                    int read;
+                    while ((read = input.read(buffer)) != -1) {
+                        output.write(buffer, 0, read);
+                        received += read;
+                        if (listener != null && (received - lastNotified >= 256 * 1024
+                                || (total > 0 && received == total))) {
+                            lastNotified = received;
+                            listener.onProgress(received, total);
+                        }
+                    }
+                    if (total > 0 && received != total) {
+                        throw new IOException("下载不完整：" + received + "/" + total);
+                    }
+                    output.flush();
+                } finally {
+                    try {
+                        output.close();
+                    } catch (IOException ignoredIo) {
+                        // 忽略
+                    }
+                    try {
+                        input.close();
+                    } catch (IOException ignoredIo) {
+                        // 忽略
                     }
                 }
-                if (total > 0 && received != total) {
-                    throw new IOException("下载不完整：" + received + "/" + total);
-                }
-                output.flush();
-            } finally {
-                try {
-                    output.close();
-                } catch (IOException ignoredIo) {
-                    // 忽略
-                }
-                try {
-                    input.close();
-                } catch (IOException ignoredIo) {
-                    // 忽略
-                }
             }
+        } catch (Throwable t) {
+            // 下载中断/失败时删掉 .part 半截文件，避免长期占用存储
+            //noinspection ResultOfMethodCallIgnored
+            temp.delete();
+            if (t instanceof IOException) {
+                throw (IOException) t;
+            }
+            throw new IOException("下载失败：" + t.getMessage(), t);
         }
 
         if (destination.exists() && !destination.delete()) {

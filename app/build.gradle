@@ -52,8 +52,8 @@ android {
         // Android 6.0 (API 23) 是最低版本；不设 ABI 过滤，本工程无原生库
         minSdk 23
         targetSdk 28
-        versionCode 20
-        versionName '1.2.16'
+        versionCode 23
+        versionName '1.2.19'
 
         // 把默认 WebDAV 配置编译进 APK
         buildConfigField "String", "DAV_URL", "\"${javaEscape(davUrl)}\""

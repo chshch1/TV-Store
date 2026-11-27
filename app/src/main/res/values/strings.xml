@@ -49,19 +49,15 @@
     <string name="settings">设置</string>
     <string name="install_restricted_title">安装被系统限制</string>
     <string name="install_restricted_message">系统安装器返回：%1$s\n\n请到「设置 → 安全 / 应用 → 允许安装未知来源应用」中允许本应用安装 APK，然后回到列表重新点击 → 「重试」。\n如果系统弹出了确认框而你没看到，用遥控器在屏幕上按确认键完成安装。</string>
-    <string name="hint_settings_checks">忽略证书校验仅用于自签名 HTTPS 服务器；自动删除会在安装成功后清理下载目录与公共目录里的安装包。</string>
     <string name="label_auto_clean">安装成功后自动删除安装包</string>
-    <string name="hint_auto_clean">勾选后，安装完成即删除下载目录里的 APK 和复制到公共目录的副本，省得占用空间；不勾选则每次安装完弹窗询问。</string>
     <string name="install_clean_title">安装完成</string>
     <string name="install_clean_message">是否删除本次的安装包？\n%1$s</string>
     <string name="install_clean_delete">删除安装包</string>
     <string name="install_clean_keep">保留</string>
-    <string name="install_clean_done">已删除安装包</string>
     <string name="install_clean_none">（本机文件已不存在）</string>
     <string name="install_clean_done_fmt">已删除 %1$d 个安装包</string>
     <string name="install_shared_copy_hint">已复制到公共目录：%1$s</string>
     <string name="install_started">已提交安装，请按提示完成</string>
-    <string name="install_failed">安装未完成：%1$s</string>
     <string name="install_no_handler">系统安装器未响应，请用文件管理器手动安装：%1$s</string>
     <string name="allow_unknown_sources">请先在系统设置中允许本应用安装未知来源应用</string>
 
@@ -84,7 +80,6 @@
     <string name="label_root">远端根目录</string>
     <string name="hint_root">/TVBox/</string>
     <string name="label_insecure">忽略 HTTPS 证书校验</string>
-    <string name="hint_insecure">仅当服务器使用自签名证书时勾选，会降低连接安全性。</string>
     <string name="settings_hint">支持群晖 WebDAV Server、坚果云、Nextcloud、Alist、Nginx DAV 等标准 WebDAV 服务。</string>
     <string name="settings_status_default">已载入内置默认配置：%1$s（可直接点保存，或按需修改）</string>
     <string name="settings_status_empty">尚未配置，请填写服务器地址（灰字为示例提示）</string>
@@ -127,14 +122,12 @@
     <string name="app_hide_system">只看用户应用</string>
     <string name="app_reload">重新读取</string>
     <string name="app_none_selected">请先勾选要上传的应用</string>
-    <string name="upload_selected">上传选中（%1$d）</string>
     <string name="upload_batch_start">准备上传 %1$d 个应用…</string>
     <string name="upload_batch_progress">第 %1$d/%2$d 个 · %3$d%%</string>
     <string name="upload_batch_done">已上传 %1$d 个应用</string>
     <string name="upload_batch_failed">有 %1$d 个应用上传失败</string>
 
     <!-- 远端 APK 版本比较角标 -->
-    <string name="local_version">本机 v%1$s</string>
     <string name="badge_short_installed">已安装</string>
     <string name="badge_short_upgrade">可升级</string>
     <string name="badge_local_downloaded">本地已下载</string>
