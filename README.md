@@ -100,3 +100,22 @@ PushTV 的「手机推送 APK 到电视」在 WebDAV 场景下等价于：手机
 
 - **固定签名**：`keystore/tvwebdavbox.jks`（alias `tvwebdavbox`，密码 `tvbox2026`），`app/build.gradle` 的 release 签名指向它。本地与 CI 出的包证书一致，可直接覆盖升级。仓库公开，此 keystore 仅供自用侧载。
 - **默认 WebDAV 配置**：`gradle.properties` 的 `defaultDavUrl` / `defaultDavUser` / `defaultDavPassword` / `defaultDavRoot` / `defaultDavInsecure` 在编译期写入 `BuildConfig`，首次运行时一次性植入 `SharedPreferences`。CI 可用 Secrets（`DAV_URL`/`DAV_USER`/`DAV_PASSWORD`/`DAV_ROOT`）覆盖，优先级高于 gradle.properties。
+
+## 版本记录
+
+- **v1.2.0**（versionCode 4）
+  - 改用仓库内固定 keystore 签名，解决每次升级都提示签名不一致（切换后需卸载一次）
+  - 支持编译期默认 WebDAV 配置，首次打开自动填好服务器地址/账号/根目录
+  - 默认值可通过 gradle.properties 配置，CI 可用 Secrets 覆盖
+- **v1.1.1**（versionCode 3）
+  - 修复「上传已安装应用」页列表为空：默认显示全部应用（含预装系统应用），不再默认只看用户应用
+  - 应用读取改为逐个 `try/catch`，单个应用包信息异常不再导致整份列表归零
+  - `sourceDir` 取不到时回退 `publicSourceDir`；去掉"必须存在对应 APK 文件"的严格过滤
+  - `getInstalledApplications` 失败或返回 0 项时，自动改用 `getInstalledPackages` 兜底
+  - 空列表时显示诊断信息（PackageManager 返回条目数 + 异常原因）；副标题显示「共 N / 用户 X / 系统 Y」
+  - 菜单新增「重新读取」；切换"只看用户应用"时保留已勾选项
+- **v1.1.0**（versionCode 2）
+  - 修复中文文件名乱码（href percent 还原优先 + UTF-8/GBK/Latin-1 三级修复）
+  - 新增「应用」页批量备份本机已安装应用
+  - 新增远端 APK 版本角标（未安装 / 同版本 / 可升级 / 本机更高 / 无法比较）
+- **v1.0.0**（versionCode 1）：WebDAV 浏览、下载、播放、安装、上传、新建目录、删除
