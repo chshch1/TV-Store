@@ -73,6 +73,12 @@ public class AppListActivity extends Activity {
             showSystemApps = isChecked;
             applyFilter();
         });
+        // 文字与勾选框是分开的两个控件（为了分别对齐列表里的勾选框与图标），点文字也能切换
+        TextView showSystemLabel = findViewById(R.id.app_show_system_label);
+        if (showSystemLabel != null) {
+            showSystemLabel.setOnClickListener(v ->
+                    showSystemBox.setChecked(!showSystemBox.isChecked()));
+        }
 
         title.setText(R.string.app_list_title);
         subtitle.setText(remoteDir == null ? "" : remoteDir);
@@ -183,7 +189,14 @@ public class AppListActivity extends Activity {
 
             final List<InstalledApp> loaded = apps;
             final String finalError = cloudError;
-            final int autoCount = outdated.size();
+            // 只勾选当前筛选条件下真正可见的行，避免"已选 N"里混进被隐藏的系统应用
+            final List<InstalledApp> outdatedVisible = new ArrayList<>();
+            for (InstalledApp app : outdated) {
+                if (!app.systemApp || showSystemApps) {
+                    outdatedVisible.add(app);
+                }
+            }
+            final int autoCount = outdatedVisible.size();
             ui.post(() -> {
                 allApps = loaded;
                 cloudTexts.clear();
@@ -194,7 +207,7 @@ public class AppListActivity extends Activity {
                 adapter.clearSelection();
                 applyFilter();
                 if (autoCount > 0) {
-                    adapter.selectPackages(outdated);
+                    adapter.selectPackages(outdatedVisible);
                     updateSelection();
                     toast(getString(R.string.cloud_auto_selected, autoCount));
                 }
