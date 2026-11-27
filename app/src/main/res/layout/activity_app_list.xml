@@ -63,19 +63,31 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="74dp"
+        android:paddingStart="0dp"
         android:paddingTop="8dp"
         android:paddingEnd="24dp"
         android:paddingBottom="12dp">
 
+        <!-- 勾选框对齐列表里的勾选框（网格 padding 16 + 行 padding 10 = 26dp） -->
         <CheckBox
             android:id="@+id/app_show_system"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="26dp"
             android:buttonTint="@color/accent"
             android:focusable="true"
-            android:minHeight="40dp"
+            android:minHeight="40dp" />
+
+        <!-- 文字对齐列表里的应用图标（26 + 勾选框 44 + 图标间距 4 = 74dp） -->
+        <TextView
+            android:id="@+id/app_show_system_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="74dp"
+            android:clickable="true"
+            android:focusable="false"
             android:text="@string/app_show_system_label"
             android:textColor="@color/text_primary"
             android:textSize="14sp" />
